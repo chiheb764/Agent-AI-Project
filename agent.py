@@ -1,59 +1,53 @@
 from typing import TypedDict
-from langgraph.graph import StateGraph, END
-
-from cal import calculatrice
+from langgraph.graph import (StateGraph,END)
 from pypdf import PdfReader
 from docx import Document
-import os
-
+import requests
+import time
 
 
 class AgentState(TypedDict):
     question: str
     reponse: str
     type_question: str
-def calculatrice(expression):
- return eval(expression)
-
+    historique: str
+   
 def analyse_node(state):
-    print("Analyse de la question...")
+    question = state["question"]
+    print(
+    "[LOG] Question reçue :",
+    question
+    )
     return state
-
-
+etat = {
+"question": "Quels sont les congés ?"
+}
+analyse_node(etat)
+workflow = StateGraph(
+AgentState
+)
 def reponse_node(state):
     question = state["question"]
-    state["reponse"] = f"Votre question est : {question}"
+    state["reponse"] = (
+    f"Votre question est : {question}"
+    )
     return state
 def decision_node(state):
-    question = state[
-    "question"
-    ].lower()
-    if (
-        "+" in question
-        or "-" in question
-        or "*" in question
-        or "/" in question
-        ):
-        state["type_question"] = (
-        "calcul"
-        )
+    question = state["question"].lower()
+    if "bonjour" in question:
+        state["type_question"] = "salutation"
+    elif any(op in question for op in ["+", "-", "*", "/"]):
+        state["type_question"] = "calcul"
     elif ".pdf" in question:
-        state["type_question"] = (
-        "pdf"
-        )
+        state["type_question"] = "pdf"
     elif ".docx" in question:
-
-        state["type_question"] = (
-        "docx"
-        )
+        state["type_question"] = "docx"
     elif ".txt" in question:
-        state["type_question"] = (
-        "txt"
-        )
+        state["type_question"] = "txt"
     else:
-        state["type_question"] = (
-        "documentation"
-        )
+        # fallback : toute question non reconnue part vers la documentation
+        state["type_question"] = "documentation"
+    print("[LOG] Outil sélectionné :", state["type_question"])
     return state
 def calculatrice_node(state):
     question = state["question"]
@@ -64,10 +58,38 @@ def calculatrice_node(state):
     resultat
     )
     return state
-def documentation_node(state):
-    state["reponse"] = (
-    "Réponse documentaire"
+def txt_reader_node(state):
+    contenu = txt_reader(
+    "documents/rh.txt"
     )
+    question = state["question"]
+    historique = state.get("historique", "")
+    prompt = f"""
+    Historique :
+    {historique}
+
+    Contexte :
+    {contenu}
+    Question :
+    {question}
+    Réponse :
+    """
+    state["reponse"] = llm_local(
+    prompt
+    )
+    return state
+def documentation_node(state):
+    question = state["question"]
+    historique = state.get("historique", "")
+    prompt = f"""
+    Historique :
+    {historique}
+    Question :
+    {question}
+    Réponse :
+    """
+    reponse = llm_local(prompt)
+    state["reponse"] = reponse
     return state
 def greeting_node(state):
     state["reponse"] = (
@@ -78,92 +100,109 @@ def route_question(state):
     return state[
     "type_question"
     ]
-def decision_node(state):
-    question = state[
-    "question"
-    ].lower()
-    if "bonjour" in question:
-        state["type_question"] = (
-        "salutation"
-        )
-    elif (
-        "+" in question
-        or "-" in question
-        or "*" in question
-        or "/" in question
-        ):
-        state["type_question"] = (
-        "calcul"
-        )
-    elif ".pdf" in question:
-        state["type_question"] = (
-        "pdf"
-        )
-    elif ".docx" in question:
-        state["type_question"] = (
-        "docx"
-        )
-    elif ".txt" in question:
-        state["type_question"] = (
-        "txt"
-        )
-    else:
-        state["type_question"] = (
-        "documentation"
-        )
-    return state
-def txt_reader_node(state):
-    contenu = txt_reader(
-    "documents/rh.txt"
-    )
-    state["reponse"] = contenu
-    return state
+def calculatrice(expression):
+    return eval(expression)
 def txt_reader(chemin_fichier):
-    with open(
-    chemin_fichier,
-    "r",
-    encoding="utf-8"
-    ) as fichier:
-      contenu = fichier.read()
-    return contenu
+    try:
+        with open(
+        chemin_fichier,
+        "r",
+        encoding="utf-8"
+        ) as fichier:
+            return fichier.read()
+    except:
+        return "Fichier introuvable."
 def pdf_reader(chemin_fichier):
-    lecteur = PdfReader(
-    chemin_fichier
-    )
-    contenu = ""
-    for page in lecteur.pages:
-        contenu += (
-        page.extract_text()
+    try:
+        lecteur = PdfReader(
+        chemin_fichier
         )
-    return contenu
-
+        contenu = ""
+        for page in lecteur.pages:
+            contenu += (
+            page.extract_text()
+            )
+        return contenu
+    except:
+        return "Fichier introuvable."
 def docx_reader(chemin_fichier):
-    doc = Document(
-    chemin_fichier
-    )
-    contenu = ""
-    for paragraphe in doc.paragraphs:
-        contenu += (
-        paragraphe.text + "\n"
+    try:
+        doc = Document(
+        chemin_fichier
         )
-    return contenu
+        contenu = ""
+        for paragraphe in (
+        doc.paragraphs
+        ):
+            contenu += (
+            paragraphe.text + "\n"
+            )
+        return contenu
+    except:
+       return "Fichier introuvable."
 def pdf_reader_node(state):
     contenu = pdf_reader(
-    "formation.pdf"
+    "documents/formation.pdf"
     )
-    state["reponse"] = contenu
+    question = state["question"]
+    historique = state.get("historique", "")
+    prompt = f"""
+    Historique :
+    {historique}
+    Contexte :
+    {contenu}
+    Question :
+    {question}
+    Réponse :
+    """
+    state["reponse"] = llm_local(
+    prompt
+    )
     return state
 def docx_reader_node(state):
     contenu = docx_reader(
-    "procedure.docx"
+    "documents/procedure.docx"
     )
-    state["reponse"] = contenu
+    question = state["question"]
+    historique = state.get("historique", "")
+
+    prompt = f"""
+    Historique :
+    {historique}
+    Contexte :
+    {contenu}
+    Question :
+    {question}
+    Réponse :
+    """
+    state["reponse"] = llm_local(
+    prompt
+    )
     return state
-workflow = StateGraph(AgentState)
-
-
-workflow.add_node("analyse", analyse_node)
-workflow.add_node("reponse", reponse_node)
+def llm_local(prompt):
+    url = (
+    "http://localhost:11434/api/generate"
+    )
+    data = {
+    "model": "phi3",
+    "prompt": prompt,
+    "stream": False
+    }
+    response = requests.post(
+    url,
+    json=data
+    )
+    return response.json()[
+    "response"
+    ]
+workflow.add_node(
+"analyse",
+analyse_node
+)
+workflow.add_node(
+"reponse",
+reponse_node
+)
 workflow.add_node(
 "decision",
 decision_node
@@ -207,11 +246,13 @@ route_question,
 "txt_reader",
 "documentation":
 "documentation"
-})
+}
+)
 
-workflow.set_entry_point("analyse")
+workflow.set_entry_point(
 
-
+"analyse"
+)
 workflow.add_edge(
 "analyse",
 "decision"
@@ -225,10 +266,9 @@ workflow.add_edge(
 END
 )
 workflow.add_edge(
-"salutation",
+"reponse",
 END
 )
-workflow.add_edge("reponse", END)
 workflow.add_edge(
 "salutation",
 END
@@ -246,22 +286,36 @@ workflow.add_edge(
 END
 )
 
+debut = time.time()
 agent = workflow.compile()
+ 
+if __name__ == "__main__":
+    
+    memoire = []
+    questions = [
+    "Quels sont les congés ?",
+    "Lis formation.pdf",
+    "50+20",
+     "Lis procedure.docx"
+     ]
 
-
-# resultat = agent.invoke(
-# {"question": "50+25"}
-# )
-# #print(resultat)
-# resultat = agent.invoke(
-# {"question": "Lis formation.pdf"}
-# )
-# #print(resultat)
-
-
-#print(resultat["reponse"])
-#print(txt_reader("documents/rh.txt")
-print(pdf_reader("documents/formation.pdf"))
-print(docx_reader("documents/procedure.docx"))
-
-
+ 
+    for question in questions:
+        if question == "":
+             print("Veuillez saisir une question.")
+             continue
+    
+        historique = "\n".join(memoire)
+        debut = time.time()
+        resultat = agent.invoke({"question": question, "historique": historique})
+        fin = time.time()
+    
+        reponse = resultat["reponse"]
+        memoire.append(f"Utilisateur : {question}")
+        memoire.append(f"Assistant : {reponse}")
+    
+        print(reponse)
+        print("[LOG] Réponse générée")
+        print("Temps :", fin - debut, "secondes")
+        print("-------------")
+    
