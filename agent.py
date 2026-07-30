@@ -4,6 +4,8 @@ from langgraph.graph import StateGraph, END
 from cal import calculatrice
 from pypdf import PdfReader
 from docx import Document
+import os
+
 
 
 class AgentState(TypedDict):
@@ -247,19 +249,19 @@ END
 agent = workflow.compile()
 
 
-resultat = agent.invoke(
-{"question": "50+25"}
-)
-print(resultat)
-resultat = agent.invoke(
-{"question": "Lis formation.pdf"}
-)
-print(resultat)
+# resultat = agent.invoke(
+# {"question": "50+25"}
+# )
+# #print(resultat)
+# resultat = agent.invoke(
+# {"question": "Lis formation.pdf"}
+# )
+# #print(resultat)
 
 
 #print(resultat["reponse"])
 #print(txt_reader("documents/rh.txt")
-#print(pdf_reader(r"C:\Users\hp\Desktop\Projet_Agent_Documentaire\formation.pdf"))
-#print(docx_reader(r"C:\Users\hp\Desktop\Projet_Agent_Documentaire\procedure.docx"))
+print(pdf_reader("documents/formation.pdf"))
+print(docx_reader("documents/procedure.docx"))
 
 
